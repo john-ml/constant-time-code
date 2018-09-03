@@ -194,7 +194,7 @@
 
   ; given a toy language expression and a renamed copy,
   ; construct a product program to verify constant-time execution
-  (define (self-product left right [no-init #f])
+  (define (self-product left right)
     ; translate the original into executable Rosette code
     (define-values (left-counter-init left-inits left-hole-inits left-counted) (add-counts left))
     (define left-counter (cadar left-counter-init))
@@ -209,9 +209,7 @@
       (list 'let ' ())
       (list (append
              (list 'begin 0)
-             (if no-init
-               (list)
-               (append left-inits left-hole-inits right-inits))
+             (append left-inits left-hole-inits right-inits)
              left-counter-init
              right-counter-init
              (map (lambda (a b) `(set! ,a ,b)) (publics-of left) (publics-of right))
@@ -338,40 +336,40 @@
       (set! w (+ x y))
       (set! w x))))
 
-; ; synthesize an expression when there are multiple if statements
-; (complete-sketch
-;   (program
-;     (set! c 4)
-;     (if (= 0 (* (hole a) (private z)))
-;       (set! c 3)
-;       (set! c 5))
-;     (if (= 0 (* (hole b) (private z2)))
-;       (set! c 3)
-;       (set! c 5)))
-;   (program
-;     (set! c 4)
-;     (if (= 0 (* 0 (private z)))
-;       (set! c 3)
-;       (set! c 5))
-;     (if (= 0 (* 0 (private z2)))
-;       (set! c 3)
-;       (set! c 5))))
-; 
-; ; synthesize an expression in a loop bound
-; (complete-sketch
-;   (program
-;     (set! x 1)
-;     (set! i 1)
-;     (while (< x (* (private y) (hole c)))
-;       (program
-;         (set! x (* x i))
-;         (set! i (+ i 1))))
-;     x)
-;   (program
-;     (set! x 1)
-;     (set! i 1)
-;     (while (< x (* (private y) 1))
-;       (program
-;         (set! x (* x i))
-;         (set! i (+ i 1))))
-;     x))
+; synthesize an expression when there are multiple if statements
+(complete-sketch
+  (program
+    (set! c 4)
+    (if (= 0 (* (hole a) (private z)))
+      (set! c 3)
+      (set! c 5))
+    (if (= 0 (* (hole b) (private z2)))
+      (set! c 3)
+      (set! c 5)))
+  (program
+    (set! c 4)
+    (if (= 0 (* 0 (private z)))
+      (set! c 3)
+      (set! c 5))
+    (if (= 0 (* 0 (private z2)))
+      (set! c 3)
+      (set! c 5))))
+
+; synthesize an expression in a loop bound
+(complete-sketch
+  (program
+    (set! x 1)
+    (set! i 1)
+    (while (< x (* (private y) (hole c)))
+      (program
+        (set! x (* x i))
+        (set! i (+ i 1))))
+    x)
+  (program
+    (set! x 1)
+    (set! i 1)
+    (while (< x (* (private y) 1))
+      (program
+        (set! x (* x i))
+        (set! i (+ i 1))))
+    x))
