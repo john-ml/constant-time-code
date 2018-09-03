@@ -293,17 +293,17 @@ On the other hand, if we replace `x` in the else clause with `(+ x 0)`, the prog
 ## Sketch completion
 
 The `complete-sketch` macro produces, given a sketch and a specification program, a Rosette `synthesize` query
-that tries to fill holes in the sketch using integer constants or other variables present in the sketch in such a way that
-the resulting completed sketch runs in constant time with respect to its private variables and is functionally
+that tries to fill holes using integer constants or other variables present in the sketch in such a way that
+the resulting completed program runs in constant time with respect to its private variables and is functionally
 equivalent to the specification program.
-The structure of the `synthesize` query is:
+The structure of the `synthesize` query is approximately as follows:
 ```racket
 (synthesize
   #:forall (list ,@(append (variables-of left) (variables-of right) (variables-of spec)))
   #:guarantee
-    ,(begin
-       (self-product left right #t)
-       (assert-functionally-equivalent left spec)))))))
+    (begin
+      ,(self-product left right #t)
+      ,(assert-functionally-equivalent left spec)))))))
 ```
 where `left` and `right` are two copies of the sketch and `spec` is the specification program.
 
@@ -421,13 +421,29 @@ The above `synthesize` query produces the following model, which correctly fills
 ```racket
 (model
  [n -11]
-  [0$choose:loopfree:287:10$basic:#f:#f:#f #t])
+ [0$choose:loopfree:287:10$basic:#f:#f:#f #t])
 ```
 
 ## Future work
 
-  "undo" macroexpansion (useful for pretty printing the completed sketches)
-  repair (use rosette to isolate an "unsolvable kernel", then use "undo expansion" to create holes in original program)
+At present, it's only possible to use integer constants or variables in holes, since a more complex expression would
+need to be embellished with code that maintains the counter variable properly--therefore, some macro expansion would have to
+occur at runtime in order to synthesize more complicated expressions.
+Additionally, the resulting models produced by Rosette are somewhat decipherable for the examples presented above, but
+in general are not very easy to understand. The results of `synthesize` are especially cryptic, since they are
+intended to be passed to `print-forms`, which produces a pretty-printed completed sketch.
+However, since the "sketches" given to `synthesize` in our case have already undergone several layers of macro expansion
+in order to incorporate a counter variable, a product program, and code to check for functional equivalence with some
+specification, the completed programs returned by `print-forms` would be far removed from the original sketches.
+Thus, a natural next step might be to develop a function that reverses the macro-expansion, allowing for recovery of
+a program written in our imperative language.
+
+Such a function would also be useful in developing a tool for automatic repair of programs that are not constant-time
+with respect to their private variables. Rosette's `debug` module has the ability to extract an "unsolvable kernel"
+from a `verify` query, which can then be used to generate potential sketches for completion. With the ability to
+recover a program in our toy language from the macro-expanded Rosette code, it may be possible to determine which
+expressions in the original program correspond to the unsolvable kernel of a macro-expanded verify query, which would
+allow us to automatically generate a completable sketch.
 
 ## References
 
