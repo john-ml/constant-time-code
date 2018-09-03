@@ -11,8 +11,8 @@ automatic verification of constant-time code.
 This repository contains an implementation,
 using the [Rosette](https://github.com/emina/rosette) language,
 of an interpreter for a simple imperative programming language and functions
-capable of verifying that programs written in this language are constant-time
-with respect to private input variables and filling holes of a program
+capable of 1) verifying that programs written in this language are constant-time
+with respect to private input variables and 2) filling holes of a program
 sketch such that the resulting program is both functionally equivalent to a
 "specification" program (which may not necessarily be constant-time) and
 itself constant-time with respect to private input variables.
@@ -75,8 +75,7 @@ fixed depth of 20, all variable names are declared at the top of the expanded pr
 using `define-symbolic`, and the entire expanded program is enclosed in a `let`-expression
 to avoid polluting the surrounding scope with local variable declarations.
 
-For example, the while-loop in the factorial example above, when unrolled and expanded, yields
-the following Rosette code:
+For example, the factorial example above yields the following Rosette code when expanded:
 ```racket
 (let ()
   (begin 0
@@ -85,7 +84,11 @@ the following Rosette code:
     (define-symbolic n integer?)
     (define-symbolic result integer?)
 
-    ; the unrolled loop
+    ; main program
+    (set! k n)
+    (set! result 1)
+
+    ; unrolled loop
     (begin 0
       (if (< 0 k) ; iteration 1
         (begin 0
@@ -97,7 +100,7 @@ the following Rosette code:
               (begin 0 ; loop body
                 (set! k (- k 1)
                 (set! result (* result k))))
-              ...
+              ; 17 more iterations ...
                 (if (< 0 k) ; iteration 20
                   (begin 0
                     (begin 0 ; loop body
@@ -105,16 +108,16 @@ the following Rosette code:
                       (set! result (* result k))))
                     (assert (not (< 0 k)))) ; fail for iterations > 20 (unroll depth was too low)
                   (begin 0)))
-              ...
+              ; 17 more else clauses ...
             (begin 0)))
         (begin 0))
       (begin 0))))
 ```
 
-To track the execution time of a program, the expansion process also generates code to initialize
-and maintain a counter variable that gets incremented whenever a statement or conditional expression is evaluated.
+To track the execution time of a program, the expansion process also generates code to increment
+a counter variable whenever a statement is evaluated.
 The `bench` function, shown below, is used to compute the amount by which to increment the
-counter variable for any arithmetic expression that does not contain conditionals.
+counter variable for any arithmetic expression or `set!` statement.
 For simplicity, we assume that each `+`, `-`, `*`, `=`, `<`, and `set!` operation takes the same
 amount of time, incrementing the counter variable by 1.
 ```racket
@@ -166,7 +169,7 @@ The result of this expansion and addition of a counter variable `k1` is shown be
             (begin
               (set! k1 (+ k1 2))
               (set! result (* result k))))
-          ... 
+          ; 18 more iterations ... 
             ; iteration 20
             (if (begin (set! k1 (+ k1 1)) (< 0 k))
               (begin 0
@@ -180,7 +183,7 @@ The result of this expansion and addition of a counter variable `k1` is shown be
                     (set! result (* result k))))
                 (assert (not (< 0 k)))) ; fail for > 20 iterations (unroll depth was too low)
               (begin 0)))
-          ...
+          ; 18 more else clauses ...
         (begin 0)))))
 ```
 
@@ -188,9 +191,11 @@ The result of this expansion and addition of a counter variable `k1` is shown be
 
 Constant-time verification is implemented using a cross product construction from Almeida et. al.<sup>[1](#references)</sup>.  
 Let `P` represent a fully macro-expanded program, complete with a counter variable to track execution time.
-The cross-product construction reduces the problem of checking that `P` runs in constant-time with respect to private variables to
-verification of a product program `Q`, which simulates the execution of two copies of `P`. The structure of `Q` is as follows
-for the product construction implemented in this repository (where `P'` is a copy of the original program `P` with all variables renamed to avoid conflicts, and `c`, `c'` are the counter variables of `P` and `P'` respectively):
+The cross-product construction reduces the problem of checking that the original program runs in constant-time with respect to
+private variables to verification of a product program `Q`, which simulates the execution of two copies of `P`.
+The structure of `Q` is as follows for the product construction implemented in this repository (where `P'` is a copy of the
+original program `P` with all variables renamed to avoid conflicts, and `c`, `c'` are the counter variables of `P` and `P'`
+respectively):
 ```
 for each non-private variable v in P corresponding to v' in P', (assume (= v v'))
 P
@@ -276,8 +281,8 @@ The product program is just Rosette code, so it can be easily verified using Ros
         (set! w x)))))
 ```
 
-Since this program is not constant-time with respect to the private variable `z` (it performs an addition operation if `z` is zero
-and does nothing otherwise), Rosette's verifier finds a counterexample to the assertion made in the product program--the model returned by `verify` asserts that the program will have different execution times when `z` is initialized to 0 or -1.
+Since this program is not constant-time with respect to the private variable `z` (it performs an extra addition operation if `z` is zero),
+Rosette's verifier finds a counterexample to the assertion made in the product program--the model returned by `verify` asserts that the program will have different execution times depending on whether `z` is initialized to 0 or -1.
 ```racket
 (model
  [n 0]
@@ -441,7 +446,7 @@ Additionally, the resulting models produced by Rosette are somewhat decipherable
 in general are not very easy to understand. The results of `synthesize` are especially cryptic, since they are
 intended to be passed to `print-forms`, which produces a pretty-printed completed sketch.
 However, since the "sketches" given to `synthesize` in our case have already undergone several layers of macro expansion
-in order to incorporate a counter variable, a product program, and code to check for functional equivalence with some
+in order to incorporate a counter variable, a product program, and code to check for functional equivalence to some
 specification, the completed programs returned by `print-forms` would be far removed from the original sketches.
 Thus, a natural next step might be to develop a function that reverses the macro-expansion, allowing for recovery of
 a program written in our imperative language.
