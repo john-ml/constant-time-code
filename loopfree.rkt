@@ -260,26 +260,33 @@
   (define-values (left-counter-init left-inits left-hole-inits left-counted) (add-counts left))
   (define-values (_ spec-inits __ ___) (add-counts spec))
   (define-values (right-counter-init right-inits ____ right-counted) (add-counts right))
+  (define left-counter (cadar left-counter-init))
+  (define right-counter (cadar right-counter-init))
   (datum->syntax stx
     `(let ()
           (begin 0
             ,@left-inits
+            ,@left-counter-init
             ,@right-inits
+            ,@right-counter-init
             ,@left-hole-inits
             ,@spec-inits
             (synthesize
               #:forall (list ,@(append (variables-of left) (variables-of right) (variables-of spec)))
               #:guarantee
-                ,(begin
-                   (self-product left right #t)
-                   (assert-functionally-equivalent left spec)))))))
+                (begin
+                   ,@(map (lambda (a b) `(set! ,a ,b)) (publics-of left) (publics-of right))
+                   ,left-counted
+                   ,right-counted
+                   (assert (= ,left-counter ,right-counter))
+                   ,(assert-functionally-equivalent left spec)))))))
 
 ; the grammar of the language
 (define-synthax (basic a ... depth)
   #:base (choose 0 1 2 3 a ...)
   #:else (choose
-           0 1 2 3 a ...
-           ((choose + < * =) (basic a ... (- depth 1)) (basic a ... (- depth 1)))))
+           0 1 2 3 a ...))
+           ; ((choose + - < * =) (basic a ... (- depth 1)) (basic a ... (- depth 1)))))
            ; (set! (choose a ...) (basic a ... - depth 1))
            ; (if (basic a ... - depth 1) (basic a ... - depth 1) (basic a ... - depth 1))
            ; (program (basic a ... - depth 1))
@@ -320,40 +327,51 @@
         (set! k (- k 1))
         (set! result (* result k)))))))
 
-; synthesize an expression when there are multiple if statements
+; runs in constant time wrt z, so the verifier returns unsat
 (complete-sketch
   (program
-    (set! c 4)
-    (if (= 0 (* (hole a) (private z)))
-      (set! c 3)
-      (set! c 5))
-    (if (= 0 (* (hole b) (private z2)))
-      (set! c 3)
-      (set! c 5)))
+    (if (= (private z) 0)
+      (set! w (+ x y))
+      (set! w (+ x (hole a)))))
   (program
-    (set! c 4)
-    (if (= 0 (* 0 (private z)))
-      (set! c 3)
-      (set! c 5))
-    (if (= 0 (* 0 (private z2)))
-      (set! c 3)
-      (set! c 5))))
+    (if (= (private z) 0)
+      (set! w (+ x y))
+      (set! w x))))
 
-; synthesize an expression in a loop bound
-(complete-sketch
-  (program
-    (set! x 1)
-    (set! i 1)
-    (while (< x (* (private y) (hole c)))
-      (program
-        (set! x (* x i))
-        (set! i (+ i 1))))
-    x)
-  (program
-    (set! x 1)
-    (set! i 1)
-    (while (< x (* (private y) 1))
-      (program
-        (set! x (* x i))
-        (set! i (+ i 1))))
-    x))
+; ; synthesize an expression when there are multiple if statements
+; (complete-sketch
+;   (program
+;     (set! c 4)
+;     (if (= 0 (* (hole a) (private z)))
+;       (set! c 3)
+;       (set! c 5))
+;     (if (= 0 (* (hole b) (private z2)))
+;       (set! c 3)
+;       (set! c 5)))
+;   (program
+;     (set! c 4)
+;     (if (= 0 (* 0 (private z)))
+;       (set! c 3)
+;       (set! c 5))
+;     (if (= 0 (* 0 (private z2)))
+;       (set! c 3)
+;       (set! c 5))))
+; 
+; ; synthesize an expression in a loop bound
+; (complete-sketch
+;   (program
+;     (set! x 1)
+;     (set! i 1)
+;     (while (< x (* (private y) (hole c)))
+;       (program
+;         (set! x (* x i))
+;         (set! i (+ i 1))))
+;     x)
+;   (program
+;     (set! x 1)
+;     (set! i 1)
+;     (while (< x (* (private y) 1))
+;       (program
+;         (set! x (* x i))
+;         (set! i (+ i 1))))
+;     x))

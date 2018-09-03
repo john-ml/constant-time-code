@@ -11,8 +11,8 @@ automatic verification of constant-time code.
 This repository contains an implementation,
 using the [Rosette](https://github.com/emina/rosette) language,
 of an interpreter for a simple imperative programming language and functions
-capable of 1) verifying that programs written in this language are constant-time
-with respect to private input variables and 2) completing a partially filled program
+capable of verifying that programs written in this language are constant-time
+with respect to private input variables and filling holes of a program
 sketch such that the resulting program is both functionally equivalent to a
 "specification" program (which may not necessarily be constant-time) and
 itself constant-time with respect to private input variables.
@@ -269,7 +269,7 @@ The product program is just Rosette code, so it can be easily verified using Ros
 ```
 
 Since this program is not constant-time with respect to the private variable `z` (it performs an addition operation if `z` is zero
-and does nothing otherwise), Rosette's verifier finds a counterexample to assertion made in the product program--the model returned by `verify` asserts that the program will have different execution times when `z` is initialized to 0 or -1.
+and does nothing otherwise), Rosette's verifier finds a counterexample to the assertion made in the product program--the model returned by `verify` asserts that the program will have different execution times when `z` is initialized to 0 or -1.
 ```racket
 (model
  [n 0]
@@ -292,11 +292,139 @@ On the other hand, if we replace `x` in the else clause with `(+ x 0)`, the prog
 
 ## Sketch completion
 
-sketch completion
-  how holes are implemented
-  how synthesizer is used to complete sketches of faulty programs
+The `complete-sketch` macro produces, given a sketch and a specification program, a Rosette `synthesize` query
+that tries to fill holes in the sketch using integer constants or other variables present in the sketch in such a way that
+the resulting completed sketch runs in constant time with respect to its private variables and is functionally
+equivalent to the specification program.
+The structure of the `synthesize` query is:
+```racket
+(synthesize
+  #:forall (list ,@(append (variables-of left) (variables-of right) (variables-of spec)))
+  #:guarantee
+    ,(begin
+       (self-product left right #t)
+       (assert-functionally-equivalent left spec)))))))
+```
+where `left` and `right` are two copies of the sketch and `spec` is the specification program.
 
-## Directions for future work
+For instance, this call to `complete-sketch`
+```racket
+(complete-sketch
+  (program
+    (if (= (private z) 0)
+      (set! w (+ x y))
+      (set! w (+ x (hole a)))))
+  (program
+    (if (= (private z) 0)
+      (set! w (+ x y))
+      (set! w x))))
+```
+generates the following `synthesize` query:
+```racket
+(let ()
+  (begin 0
+    ; declare variables (P)
+    (define-symbolic z integer?)
+    (define-symbolic w integer?)
+    (define-symbolic x integer?)
+    (define-symbolic y integer?)
+
+    ; initialize counter (P)
+    (define-symbolic z24 integer?)
+    (set! z24 0)
+
+    ; declare variables (P')
+    (define-symbolic z8 integer?)
+    (define-symbolic w9 integer?)
+    (define-symbolic x10 integer?)
+    (define-symbolic y11 integer?)
+
+    ; initialize counter (P')
+    (define-symbolic z835 integer?)
+    (set! z835 0)
+
+    ; initialize holes
+    (define a (basic z w x y 1))
+
+    ; declare variables (spec)
+    (define-symbolic z12 integer?)
+    (define-symbolic w13 integer?)
+    (define-symbolic x14 integer?)
+    (define-symbolic y15 integer?)
+
+    ; synthesize query
+    (synthesize
+      #:forall (list z w x y z8 w9 x10 y11 z12 w13 x14 y15)
+      #:guarantee
+        (begin
+          ; assume public vars are equal
+          (set! w w9)
+          (set! x x10)
+          (set! y y11)
+
+          ; main program (P)
+          (begin 0
+            (begin
+              (set! z24 (+ z24 1))
+              (if (begin (set! z24 (+ z24 1)) (= z 0))
+                (begin
+                  (set! z24 (+ z24 2))
+                  (set! w (+ x y)))
+                (begin
+                  (set! z24 (+ z24 2))
+                  (set! w (+ x a))))))
+
+          ; main program (P')
+          (begin 0
+            (begin
+              (set! z835 (+ z835 1))
+              (if (begin (set! z835 (+ z835 1)) (= z8 0))
+                (begin
+                  (set! z835 (+ z835 2))
+                  (set! w9 (+ x10 y11)))
+                (begin
+                  (set! z835 (+ z835 2))
+                  (set! w9 (+ x10 a))))))
+
+          ; counter variables must be equal (assert that completed sketch is constant time)
+          (assert (= z24 z835))
+
+          ; assert functional equivalence
+          (begin
+            ; assume same initial state
+            (set! z z12)
+            (set! w w13)
+            (set! x x14)
+            (set! y y15)
+
+            ; run completed sketch
+            (begin 0
+              (if (= z 0)
+                (set! w (+ x y))
+                (set! w (+ x a))))
+
+            ; run spec
+            (begin 0
+              (if (= z12 0)
+                (set! w13 (+ x14 y15))
+                (set! w13 x14)))
+
+            ; assert same final state
+            (assert (= z z12))
+            (assert (= w w13))
+            (assert (= x x14))
+            (assert (= y y15)))))))
+```
+
+The above `synthesize` query produces the following model, which correctly fills in the integer constant 0 in place of
+`(hole a)` in the original sketch:
+```racket
+(model
+ [n -11]
+  [0$choose:loopfree:287:10$basic:#f:#f:#f #t])
+```
+
+## Future work
 
   "undo" macroexpansion (useful for pretty printing the completed sketches)
   repair (use rosette to isolate an "unsolvable kernel", then use "undo expansion" to create holes in original program)
