@@ -1,4 +1,4 @@
-# Cross-product verification of constant-time code in Rosette
+# Verification & synthesis of constant-time code in Rosette
 
 Cryptographic algorithms whose timings are dependent upon
 private information are vulnerable to a side channel attack where
@@ -17,15 +17,12 @@ sketch such that the resulting program is both functionally equivalent to a
 "specification" program (which may not necessarily be constant-time) and
 itself constant-time with respect to private input variables.
 
-Constant-time verification is implemented using a cross product construction from
-Almeida et. al.<sup>[1](https://github.com/johnli0135/constant-time-code/README.md#References)</sup>.
-
 ## A simple imperative language
 
 The grammar of the language is given below.
 An arithmetic expression `aexp` can be an integer literal, a variable (which can be annotated
-as a hole to be completed or as private), an application of an arithmetic operator `+` or `*`, or
-a conditional expressions.
+as a hole to be completed or as private), an application of an arithmetic operator `+` `-` or `*`, or
+a conditional expression.
 A boolean expression `bexp` can be a literal `#t` or `#f` or a comparison of two arithmetic expressions.
 A statement `stmt` can be a variable assignment, an assertion, or a while loop.
 Finally, a program is a sequence of statements.
@@ -69,7 +66,7 @@ For example, the following program computes the factorial of some private variab
 ## Conversion to Rosette code
 
 In order to run programs written in this language, we use Racket macros to expand
-programs into executable Rosette code. Since the language is written using s-expressions
+them into executable Rosette code. Since the language is written using s-expressions
 and most of the operator names (`+`, `*`, `=`, `set!`, etc.) are identical to their Rosette
 counterparts, the expansion leaves most expressions unchanged, with just a few exceptions:
 `(program expr ...)` is replaced by `(begin 0 expr ...)`, `while` loops are unrolled to a
@@ -114,8 +111,7 @@ the following Rosette code:
 ```
 
 To track the execution time of a program, the expansion process also generates code to initialize
-and maintain a counter variable that gets incremented whenever a statement or conditional
-expression is evaluated.
+and maintain a counter variable that gets incremented whenever a statement or conditional expression is evaluated.
 The `bench` function, shown below, is used to compute the amount by which to increment the
 counter variable for any arithmetic expression that does not contain conditionals.
 For simplicity, we assume that each `+`, `-`, `*`, `=`, `<`, and `set!` operation takes the same
@@ -188,10 +184,80 @@ The result of this expansion and addition of a counter variable `k1` is shown be
         (begin 0)))))
 ```
 
-## Product construction
-
-
 ## Verification
+
+Constant-time verification is implemented using a cross product construction from Almeida et. al.<sup>[1](#references)</sup>.  
+Let `P` represent a fully macro-expanded program, complete with a counter variable to track execution time.
+The cross-product construction reduces the problem of checking that `P` runs in constant-time with respect to private variables to
+verification of a product program `Q`, which simulates the execution of two copies of `P`. The structure of `Q` is as follows
+for the product construction implemented in this repository (where `P'` is a copy of the original program `P` with all variables renamed to avoid conflicts, and `c`, `c'` are the counter variables of `P` and `P'` respectively):
+```
+for each non-private variable v in P corresponding to v' in P', (assume (= v v'))
+P
+P'
+(assert (= c c'))
+```
+
+These assertions only fail if there exist differing initial values for the private variables of `P` that result in different `c`s--
+that is, if the execution time of `P` depends on the values of its private variables.
+
+As an example, here's a simple program which computes the sum of two variables `x` and `y` only if a private variable `z` is zero:
+```racket
+(program
+  (if (= (private z) 0)
+    (+ x y)
+    x))
+```
+
+The product construction for this program yields
+```racket
+(let ()
+  (begin 0
+    ; declare variables (P)
+    (define-symbolic z integer?)
+    (define-symbolic x integer?)
+    (define-symbolic y integer?)
+    
+    ; declare variables (P')
+    (define-symbolic z5 integer?)
+    (define-symbolic x6 integer?)
+    (define-symbolic y7 integer?)
+    
+    ; initialize counter (P)
+    (define-symbolic z8 integer?)
+    (set! z8 0)
+    
+    ; initialize counter (P')
+    (define-symbolic z512 integer?)
+    (set! z512 0)
+    
+    ; assume public variables are equal
+    (set! x x6)
+    (set! y y7)
+    
+    ; main program (P)
+    (begin 0
+      (begin
+        (set! z8 (+ z8 1))
+        (if (begin (set! z8 (+ z8 1)) (= z 0))
+          (begin
+            (set! z8 (+ z8 1))
+            (+ x y))
+          x)))
+    
+    ; main program (P')
+    (begin 0
+      (begin
+        (set! z512 (+ z512 1))
+        (if (begin (set! z512 (+ z512 1)) (= z5 0))
+          (begin
+            (set! z512 (+ z512 1))
+            (+ x6 y7))
+          x6)))
+    
+    ; assert counter variables are equal
+    (assert (= z8 z512))))
+```
 
   how verifier is used to check for constant time (give examples)
 
@@ -208,4 +274,4 @@ sketch completion
 
 ## References
 
-J. B. Almeida, M. Barbosa, G. Barthe, F. Dupressoir, and M. Emmi. Verifying constant-time implementations. In USENIX, pages 53–70. USENIX Association, 2016.
+**1.** J. B. Almeida, M. Barbosa, G. Barthe, F. Dupressoir, and M. Emmi. Verifying constant-time implementations. In USENIX, pages 53–70. USENIX Association, 2016.
