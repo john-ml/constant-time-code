@@ -249,7 +249,7 @@
   ;   `(quote (pair ,(unroll `(= x 0) `(program (set! x + x 1) (set! y + y 3)))
   ;                 ,((emit-counter-code 'a) (unroll `(= x 0) `(program (set! x + x 1) (set! y + y 3))))))
   (define right (rename left))
-  (datum->syntax stx `(quote ,(self-product left right))))
+  (datum->syntax stx (self-product left right)))
 
 ; macro to return bindings for a functionally equivalent constant-time program
 (define-syntax (complete-sketch stx)
@@ -293,13 +293,6 @@
   (while (< 0 k) (program
     (set! k (- k 1))
     (set! result (* result k)))))
-
-; simple program
-(product
-  (program
-    (if (= (private z) 0)
-      (+ x y)
-      x)))
 
 ; runs in constant time wrt z, so the verifier returns unsat
 (verify
