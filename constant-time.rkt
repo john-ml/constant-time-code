@@ -304,16 +304,16 @@
   (product
     (program
       (if (= (private z) 0)
-        (+ x y)
-        (+ x 0)))))
+        (set! w (+ x y))
+        (set! w (+ x 0))))))
 
 ; does not run in constant time wrt z, so the verifier returns a counterexample
 (verify
   (product
     (program
       (if (= (private z) 0)
-        (+ x y)
-        x))))
+        (set! w (+ x y))
+        (set! w x)))))
 
 ; does not run in constant time wrt n, so the verifier returns a counterexample
 (verify
